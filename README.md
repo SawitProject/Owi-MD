@@ -1,4 +1,4 @@
-# Owi-MD by SawitProject
+# Owi MD 
 
 <div align="center">
 
