@@ -46,6 +46,10 @@ const mess = {
     afk_message: "🕊️ @sender telah kembali dari AFK sejak _*@durasi*_.@alasan",
     sewa_notif: "⚠️ _*Peringatan!*_\n\n_Masa Sewabot :_ @date",
     sewa_out: `❌ _*Masa SewaBOT Telah Habis*_\n_Bot akan keluar otomatis_\n\nTerima kasih sudah menggunakan layanan sewa autoresbot.\n\n*Nomor Owner*\nwa.me/@ownernumber`,
+    antilink: {
+      detected: "⚠️ *ANTI LINK DETECTED* 🔗\n\n_Pengirim:_ @sender\n\n_Mode: @mode_\n_Type: @type_",
+      kick: "⛔ @sender _Telah dikick karena mengirim link._",
+    },
   },
   game_handler: {
     menyerah:
