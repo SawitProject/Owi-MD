@@ -1,167 +1,159 @@
 import mess from "../../strings.js";
-import { downloadQuotedMedia, downloadMedia } from "../../lib/utils.js";
-import fs from "fs/promises";
 import { getGroupMetadata } from "../../lib/cache.js";
-import { sendImageAsSticker } from "../../lib/exif.js";
-import { isOwner } from "../../lib/users.js";
-import config from "../../config.js";
+import { downloadMedia, logWithTime } from "../../lib/utils.js";
+import fs from "fs/promises";
 
-function getMediaContent(media) {
-  if (media.type === "video" || media.type === "image") {
-    return media.content.caption;
+async function sendMessage(sock, remoteJid, text, message) {
+  try {
+    await sock.sendMessage(remoteJid, { text }, { quoted: message });
+  } catch (error) {
+    console.error(`Failed to send message: ${error.message}`);
   }
-  return media.content || media.text;
 }
 
 async function handle(sock, messageInfo) {
-  const { remoteJid, isGroup, message, sender, content, isQuoted, type } =
-    messageInfo;
-  if (!isGroup) return; // Only Grub
+  const { remoteJid, message, sender, args, content, isGroup, type, isQuoted } = messageInfo;
+
+  if (!isGroup) {
+    await sendMessage(sock, remoteJid, mess.general.isGroup, message);
+    return;
+  }
 
   try {
-    // Mendapatkan metadata grup
     const groupMetadata = await getGroupMetadata(sock, remoteJid);
     const participants = groupMetadata.participants;
     const isAdmin = participants.some(
       (p) => (p.phoneNumber === sender || p.id === sender) && p.admin
     );
 
-    const isOwnerUsers = isOwner(sender);
+    // Check owner
+    const isOwnerUser = global.db?.data?.users?.[sender]?.owner || 
+                       global.db?.data?.users?.[sender]?.premium || false;
 
-    if (!isAdmin && !isOwnerUsers) {
-      await sock.sendMessage(
-        remoteJid,
-        { text: mess.general.isAdmin },
-        { quoted: message }
-      );
+    if (!isAdmin && !isOwnerUser) {
+      await sendMessage(sock, remoteJid, mess.general.isAdmin, message);
       return;
     }
 
-    // Unduh media
-    const media = isQuoted
-      ? await downloadQuotedMedia(message)
-      : await downloadMedia(message);
+    const subCommand = args[0]?.toLowerCase();
+    const messageContent = content?.trim() || "";
 
-    const mediaType = isQuoted ? `${isQuoted.type}Message` : `${type}Message`;
-    let mediaContent = "";
+    // Generate mention list (all participants)
+    const mentions = participants.map((member) => member.id);
+
+    // Help command
+    if (subCommand === "help" || subCommand === "?") {
+      const helpText = `══✪〘 *💨 HIDETAG HELP* 〙✪══
+
+*Perintah:*
+
+.${"hidetag"} [teks] - Kirim hidden tag
+.${"hidetag"} [teks] -h:HEADER - Custom header
+.${"hidetag"} [reply media] - Tag dengan reply media
+
+*Fitur:*
+- Mention semua member tanpa notif
+- Bisa kirim media (gambar/video)
+- Custom header/footer
+- Mode quiet (tanpa notifikasi)
+
+*Admin Only!*
+`;
+      await sendMessage(sock, remoteJid, helpText, message);
+      return;
+    }
+
+    // Parse options
+    let header = "🔔";
+    let footer = "━";
+    
+    if (args.some((arg) => arg.startsWith("-h:"))) {
+      const hArg = args.find((arg) => arg.startsWith("-h:"));
+      header = hArg.replace("-h:", "") || "🔔";
+    }
+    if (args.some((arg) => arg.startsWith("-f:"))) {
+      const fArg = args.find((arg) => arg.startsWith("-f:"));
+      footer = fArg.replace("-f:", "") || "━";
+    }
+
+    // Clean content
+    let cleanContent = messageContent;
+    cleanContent = cleanContent
+      .replace(/-h:\S+/g, "")
+      .replace(/-f:\S+/g, "")
+      .replace(/-header:\S+/g, "")
+      .replace(/-footer:\S+/g, "")
+      .trim();
+
+    // Check for media
+    let mediaBuffer = null;
+    let mediaType = null;
 
     if (isQuoted) {
-      mediaContent = getMediaContent(isQuoted);
+      try {
+        const quotedType = Object.keys(isQuoted)[0]?.replace("Message", "");
+        if (["image", "video", "audio", "document", "sticker"].includes(quotedType?.toLowerCase())) {
+          const mediaPath = await downloadMedia(message, true);
+          if (mediaPath) {
+            mediaBuffer = await fs.readFile(mediaPath);
+            mediaType = quotedType.toLowerCase();
+          }
+        }
+      } catch (mediaError) {
+        console.error("Media download error:", mediaError.message);
+      }
     }
 
-    if (content && content.trim() !== "") {
-      mediaContent = content.trim();
-    }
+    // Build message text
+    const memberCount = participants.length;
+    let textMessage = "";
 
-    // Kirim media atau pesan teks
-    if (media) {
-      const mediaPath = `tmp/${media}`;
-      await checkFileExists(mediaPath); // Validasi file
-      await sendMedia(
-        sock,
-        remoteJid,
-        mediaType,
-        mediaPath,
-        mediaContent,
-        message,
-        participants
-      );
+    if (cleanContent) {
+      textMessage = `${header} *${cleanContent}* ${footer}\n\n💤 _Hidden mention untuk ${memberCount} member_`;
     } else {
-      await sendTextMessage(
-        sock,
-        remoteJid,
-        mediaContent,
-        message,
-        participants
-      );
+      textMessage = `${header} *PENTING!* ${footer}\n\n💤 _Hidden mention untuk ${memberCount} member_`;
     }
+
+    // Send based on media type
+    if (mediaBuffer) {
+      const sendOptions = {
+        mentions,
+        caption: cleanContent || undefined,
+      };
+
+      switch (mediaType) {
+        case "image":
+          await sock.sendMessage(remoteJid, { image: mediaBuffer, ...sendOptions }, { quoted: message });
+          break;
+        case "video":
+          await sock.sendMessage(remoteJid, { video: mediaBuffer, ...sendOptions }, { quoted: message });
+          break;
+        case "audio":
+          await sock.sendMessage(remoteJid, { audio: mediaBuffer, ...sendOptions }, { quoted: message });
+          break;
+        case "document":
+          await sock.sendMessage(remoteJid, { document: mediaBuffer, ...sendOptions }, { quoted: message });
+          break;
+        case "sticker":
+          await sock.sendMessage(remoteJid, { sticker: mediaBuffer, ...sendOptions }, { quoted: message });
+          break;
+        default:
+          await sock.sendMessage(remoteJid, { text: textMessage, mentions }, { quoted: message });
+      }
+    } else {
+      await sock.sendMessage(remoteJid, { text: textMessage, mentions }, { quoted: message });
+    }
+
+    logWithTime("HIDETAG", `Hidden tag executed by ${sender} in ${remoteJid}`);
   } catch (error) {
-    console.error("Error:", error.message);
-    await sendTextMessage(
-      sock,
-      remoteJid,
-      "⚠️ Terjadi kesalahan: " + error.message,
-      message,
-      participants
-    );
+    console.error("Error in hidetag:", error);
+    await sendMessage(sock, remoteJid, `⚠️ Error: ${error.message}`, message);
   }
-}
-
-// Fungsi untuk validasi keberadaan file
-async function checkFileExists(path) {
-  try {
-    await fs.access(path);
-  } catch {
-    throw new Error(`File media tidak ditemukan: ${path}`);
-  }
-}
-
-// Fungsi untuk mengirim pesan teks
-async function sendTextMessage(sock, remoteJid, text, quoted, participants) {
-  text = typeof text === "string" ? text : "";
-  await sock.sendMessage(
-    remoteJid,
-    { text: text, mentions: participants.map((p) => p.id) },
-    { quoted }
-  );
-}
-
-// Fungsi untuk mengirim media
-async function sendMedia(
-  sock,
-  remoteJid,
-  type,
-  mediaPath,
-  caption,
-  message,
-  participants
-) {
-  const mediaOptions = {
-    audioMessage: { audio: await fs.readFile(mediaPath) },
-    imageMessage: {
-      image: await fs.readFile(mediaPath),
-      caption,
-      mentions: participants.map((p) => p.id),
-    },
-    videoMessage: {
-      video: await fs.readFile(mediaPath),
-      caption,
-      mentions: participants.map((p) => p.id),
-    },
-    documentMessage: {
-      document: await fs.readFile(mediaPath),
-      caption,
-      mentions: participants.map((p) => p.id),
-    },
-    stickerMessage: {
-      stickerMessage: await fs.readFile(mediaPath),
-      caption,
-      mentions: participants.map((p) => p.id),
-    },
-  };
-
-  const options = mediaOptions[type];
-  if (!options) {
-    throw new Error(`Tipe media tidak didukung: ${type}`);
-  }
-
-  if (type == "stickerMessage") {
-    const options2 = {
-      packname: config.sticker_packname,
-      author: config.sticker_author,
-      mentions: options.mentions,
-    };
-    const buffer = options.stickerMessage;
-    // Kirim stiker
-    await sendImageAsSticker(sock, remoteJid, buffer, options2, message);
-    return;
-  }
-  await sock.sendMessage(remoteJid, options, { quoted: message });
 }
 
 export default {
   handle,
-  Commands: ["hidetag", "h", "hidetak"],
+  Commands: ["hidetag", "h", "hidetak", "htag", "mentionall"],
   OnlyPremium: false,
   OnlyOwner: false,
 };
