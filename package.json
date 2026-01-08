@@ -1,0 +1,24 @@
+{
+  "name": "owi-md",
+  "version": "5.0.1",
+  "description": "Owi-MD by SawitProject - Powerful WhatsApp Bot Script with Plugin Base",
+  "main": "wowo/index.js",
+  "scripts": {
+    "start": "cd wowo && node index.js",
+    "install": "cd wowo && npm install",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "whatsapp-bot",
+    "owi-md",
+    "sawitproject"
+  ],
+  "author": "SawitProject",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/SawitProject/owi-md/issues"
+  },
+  "homepage": "https://sawitproject.com"
+}
