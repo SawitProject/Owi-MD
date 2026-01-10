@@ -6,7 +6,7 @@ import moment from "moment-timezone";
 
 const CONNECTION = "qr"; // qr atau pairing
 const OWNER_NAME = "SawitProject";
-const NOMOR_BOT = ""; // 628xx nomor wa
+const NOMOR_BOT = "6285124252139"; // 628xx nomor wa
 const DESTINATION = "both"; // group , private, both
 const APIKEY = ""; // apikey dari autoresbot.com (paket apikey)
 const RATE_LIMIT = 3000; // 3 detik/chat
@@ -31,7 +31,7 @@ const BG_WELCOME2 = "https://api.autoresbot.com/api/maker/bg-default";
 // Konfiqurasi Panel
 const PANEL_URL = "";
 const PANEL_PLTA = "";
-const PANEL_DESCRIPTION = "Butuh Bantuan Hubungi 628xxxxx";
+const PANEL_DESCRIPTION = "Butuh Bantuan Hubungi 6283150958207";
 const PANEL_ID_EGG = 15;
 const PANEL_ID_LOCATION = 1;
 const PANEL_DEFAULT_DISK = 5120; // 5GB atau 0 (unlimited)
